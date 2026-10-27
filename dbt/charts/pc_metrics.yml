@@ -134,7 +134,7 @@ queries:
   tab_cost:
     sql: |
       -- Renderer が 1 つ増えるとメモリが何 MB 増えるか（回帰直線の傾き）
-      select round(regr_slope(f.avg_memory_mb, f.avg_process_count)) as mb_per_tab
+      select round(regr_slope(f.avg_memory_mb, f.avg_process_count)) as mb_per_renderer
       from {{ ref('fct_process_memory') }} as f
       inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
       where p.process_name = 'google chrome helper (renderer)'
@@ -322,7 +322,7 @@ charts:
   tab_cost_kpi:
     type: kpi
     query: tab_cost
-    value: mb_per_tab
+    value: mb_per_renderer
     label: "Chrome の Renderer 1 個あたりのメモリ MB"
     style:
       value:

@@ -139,7 +139,7 @@ models:
           to: ref('dim_processes')
           field: process_key
   - name: is_started_while_collecting
-    description: 収集中に起動したか。収集を始める前から動いていたプロセスは false で、起動回数には数えない
+    description: 収集中に起動したか。収集を始める前から動いていたプロセスは false で、起動件数には数えない
   - name: observed_lifetime_minutes
     description: 起動から最後に見えた時刻までの分数。まだ動いているプロセスや、収集が止まっていた間に終わったプロセスは実際より短く出る
   - name: started_at
