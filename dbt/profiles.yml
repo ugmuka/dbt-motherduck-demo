@@ -1,0 +1,22 @@
+# dbt/profiles.yml（プロジェクト直下。~/.dbt/profiles.yml でも可）
+pc_metrics:
+  target: dev
+  outputs:
+    # 手元の DuckDB ファイル。試行錯誤はここで。MotherDuck のコンピュートを使わない
+    dev:
+      type: duckdb
+      path: dev.duckdb
+      threads: 4
+    # MotherDuck。人に見せるものはここで（dbt build --target prod）
+    prod:
+      type: duckdb
+      path: "md:pc_metrics?motherduck_token={{ env_var('MOTHERDUCK_TOKEN') }}"
+      threads: 4
+    # dbt Charts（dct）専用。dct は duckdb の path が ":" で始まらないとプロジェクトからの相対パスにしてしまうので、
+    # メモリ上の DuckDB を開いて MotherDuck を attach する。トークンは環境変数 MOTHERDUCK_TOKEN から読まれる
+    charts:
+      type: duckdb
+      path: ":memory:"
+      attach:
+        - path: "md:pc_metrics"
+      threads: 4

@@ -1,0 +1,430 @@
+title: "自分の PC のメモリ"
+source: analytics
+
+queries:
+  latest:
+    sql: |
+      -- 最新の 1 分の PC 全体の値
+      select
+        avg_used_percent / 100 as used_ratio,
+        avg_used_gb,
+        minute
+      from {{ ref('fct_host_memory') }}
+      order by minute desc
+      limit 1
+
+  browser_now:
+    sql: |
+      -- 最新の 1 分でブラウザのプロセスがいくつ動いていたか
+      select round(sum(f.avg_process_count)) as browser_processes
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      where p.category = 'browser'
+        and f.minute = (select max(minute) from {{ ref('fct_process_memory') }})
+
+  category_timeline:
+    sql: |
+      -- 直近 6 時間について、分ごとにカテゴリの合計を出す
+      -- （収集していない時間帯を線でつながないよう、期間を区切る）
+      select f.minute, p.category, round(sum(f.avg_memory_mb) / 1024, 2) as memory_gb
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      where f.minute >= (select max(minute) from {{ ref('fct_process_memory') }}) - interval 6 hour
+      group by 1, 2
+      order by 1, 2
+
+  used_timeline:
+    sql: |
+      select minute, avg_used_percent / 100 as used_ratio
+      from {{ ref('fct_host_memory') }}
+      where minute >= (select max(minute) from {{ ref('fct_host_memory') }}) - interval 6 hour
+      order by 1
+
+  top_processes:
+    sql: |
+      -- プロセス名ごとの 1 分平均メモリの、期間全体での平均
+      select p.process_name, p.category, round(avg(f.avg_memory_mb)) as avg_memory_mb
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      group by 1, 2
+      order by 3 desc
+      limit 10
+
+  uncategorized:
+    sql: |
+      -- マスタにないプロセスのうちメモリが大きいもの。process_category.csv に足す候補
+      select p.process_name, round(avg(f.avg_memory_mb)) as avg_memory_mb
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      where not p.is_categorized
+      group by 1
+      order by 2 desc
+      limit 10
+
+  zombie_now:
+    sql: |
+      -- 最新の 1 分のゾンビプロセス数
+      select round(sum(avg_zombie_count)) as zombies
+      from {{ ref('fct_process_memory') }}
+      where minute = (select max(minute) from {{ ref('fct_process_memory') }})
+
+  zombie_timeline:
+    sql: |
+      select minute, round(sum(avg_zombie_count), 1) as zombies
+      from {{ ref('fct_process_memory') }}
+      where minute >= (select max(minute) from {{ ref('fct_process_memory') }}) - interval 6 hour
+      group by 1
+      order by 1
+
+  memory_spikes:
+    sql: |
+      -- PC 全体の使用量が、直前 30 分の平均より 1GB 以上跳ねた分を「山」とし、
+      -- その分にいちばん増えたプロセスを犯人として添える
+      with host as (
+        select
+          minute, host_key, avg_used_gb,
+          avg(avg_used_gb) over (
+            partition by host_key order by minute
+            range between interval 30 minute preceding and interval 1 minute preceding
+          ) as baseline_gb
+        from {{ ref('fct_host_memory') }}
+      ),
+      spikes as (
+        select minute, host_key, round(avg_used_gb - baseline_gb, 2) as jump_gb
+        from host
+        where avg_used_gb - baseline_gb >= 1.0
+      ),
+      process as (
+        select
+          minute, host_key, process_key, avg_memory_mb,
+          avg(avg_memory_mb) over (
+            partition by host_key, process_key order by minute
+            range between interval 30 minute preceding and interval 1 minute preceding
+          ) as baseline_mb
+        from {{ ref('fct_process_memory') }}
+      ),
+      culprits as (
+        select
+          spikes.minute, spikes.jump_gb,
+          dim_processes.process_name,
+          round(process.avg_memory_mb - coalesce(process.baseline_mb, 0)) as process_jump_mb
+        from spikes
+        inner join process
+          on spikes.minute = process.minute and spikes.host_key = process.host_key
+        inner join {{ ref('dim_processes') }} as dim_processes
+          on process.process_key = dim_processes.process_key
+        qualify row_number() over (partition by spikes.minute, spikes.host_key
+                                   order by process.avg_memory_mb - coalesce(process.baseline_mb, 0) desc) = 1
+      )
+      -- 同じ山が続けて何分も検出されるので、30 分ごとにいちばん大きい 1 行に絞る
+      select strftime(minute, '%m/%d %H:%M') as spike_at, jump_gb, process_name, process_jump_mb
+      from culprits
+      qualify row_number() over (partition by time_bucket(interval 30 minute, minute) order by jump_gb desc) = 1
+      order by jump_gb desc
+      limit 10
+
+  tab_debt:
+    sql: |
+      -- 1 分ごとの Chrome の Renderer（ほぼタブ 1 枚に 1 つ）の数と、合計メモリ
+      select f.minute, f.avg_process_count as renderers, round(f.avg_memory_mb / 1024, 2) as memory_gb
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      where p.process_name = 'google chrome helper (renderer)'
+
+  tab_cost:
+    sql: |
+      -- Renderer が 1 つ増えるとメモリが何 MB 増えるか（回帰直線の傾き）
+      select round(regr_slope(f.avg_memory_mb, f.avg_process_count)) as mb_per_tab
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      where p.process_name = 'google chrome helper (renderer)'
+
+  cpu_vs_memory:
+    sql: |
+      -- プロセス名ごとの平均 CPU と平均メモリ。小さいものは除く
+      select
+        p.process_name, p.category,
+        round(avg(f.avg_cpu_percent), 1) as avg_cpu_percent,
+        round(avg(f.avg_memory_mb)) as avg_memory_mb
+      from {{ ref('fct_process_memory') }} as f
+      inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+      group by 1, 2
+      having avg(f.avg_memory_mb) >= 100
+
+  app_trends:
+    sql: |
+      -- メモリ上位 10 のアプリについて、直近 6 時間を 15 分刻みにした推移を配列で持つ
+      with recent as (
+        select f.*, p.process_name, p.category
+        from {{ ref('fct_process_memory') }} as f
+        inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
+        where f.minute >= (select max(minute) from {{ ref('fct_process_memory') }}) - interval 6 hour
+      ),
+      top10 as (
+        select process_name from recent group by 1 order by avg(avg_memory_mb) desc limit 10
+      ),
+      buckets as (
+        select process_name, category, time_bucket(interval 15 minute, minute) as bucket, avg(avg_memory_mb) as mb
+        from recent
+        where process_name in (select process_name from top10)
+        group by 1, 2, 3
+      )
+      select
+        process_name, category,
+        round(avg(mb)) as avg_memory_mb,
+        list(round(mb) order by bucket) as trend
+      from buckets
+      group by 1, 2
+      order by 3 desc
+
+  uptime_vs_memory:
+    sql: |
+      -- 起動からの経過時間ごとの PC 全体の使用量（1 時間刻み）
+      select round(uptime_hours) as uptime_hours, round(avg(avg_used_gb), 2) as used_gb
+      from {{ ref('fct_host_memory') }}
+      group by 1
+      order by 1
+
+  app_runs:
+    sql: |
+      -- 収集中に起動したプロセスについて、アプリごとの起動回数と寿命
+      -- （system と other は短命な裏方のプロセスが多いので除く）
+      select
+        p.process_name, p.category,
+        count(*) as starts,
+        round(median(r.observed_lifetime_minutes), 1) as median_lifetime_minutes,
+        round(max(r.observed_lifetime_minutes)) as max_lifetime_minutes
+      from {{ ref('fct_process_runs') }} as r
+      inner join {{ ref('dim_processes') }} as p on r.process_key = p.process_key
+      where r.is_started_while_collecting
+        and p.category not in ('system', 'other')
+      group by 1, 2
+      order by 3 desc
+      limit 10
+
+charts:
+  used_now:
+    type: kpi
+    query: latest
+    value: used_ratio
+    label: "いまのメモリ使用率"
+    style:
+      value:
+        format: percent_whole
+
+  used_gb_now:
+    type: kpi
+    query: latest
+    value: avg_used_gb
+    label: "いまの使用中メモリ GB"
+    style:
+      value:
+        format: number
+
+  browser_now_kpi:
+    type: kpi
+    query: browser_now
+    value: browser_processes
+    label: "動いているブラウザのプロセス数"
+    style:
+      value:
+        format: integer
+
+  memory_by_category:
+    type: area
+    query: category_timeline
+    x: minute
+    y: memory_gb
+    color: category
+    title: "カテゴリ別のメモリ 直近 6 時間"
+    subtitle: "積み上げの合計は PC 全体の使用量を超える。共有メモリを各プロセスで重複して数えるため"
+    x_label: "時刻"
+    y_label: "GB"
+    style:
+      stack: zero
+
+  used_ratio:
+    type: line
+    query: used_timeline
+    x: minute
+    y: used_ratio
+    title: "PC 全体のメモリ使用率 直近 6 時間"
+    subtitle: "OS が報告する使用中メモリ ÷ 物理メモリ"
+    x_label: "時刻"
+    y_label: "使用率"
+    style:
+      number_format: percent_whole
+
+  top10:
+    type: bar
+    query: top_processes
+    x: process_name
+    y: avg_memory_mb
+    color: category
+    title: "メモリを食っているプロセス Top 10"
+    subtitle: "同名プロセスを合算した 1 分平均の、収集した全期間での平均"
+    x_label: "プロセス名"
+    y_label: "MB"
+    sort:
+      by: avg_memory_mb
+      order: desc
+
+  uncategorized_table:
+    type: table
+    query: uncategorized
+    title: "分類されていないプロセス"
+    subtitle: "メモリが大きい順。seeds/process_category.csv に足す候補"
+    style:
+      columns:
+        process_name:
+          label: "プロセス名"
+        avg_memory_mb:
+          label: "平均メモリ MB"
+          format: integer
+
+  zombie_now_kpi:
+    type: kpi
+    query: zombie_now
+    value: zombies
+    label: "いまのゾンビプロセス数"
+    style:
+      value:
+        format: integer
+
+  zombie_line:
+    type: line
+    query: zombie_timeline
+    x: minute
+    y: zombies
+    title: "ゾンビプロセス 直近 6 時間"
+    subtitle: "終了したのに親プロセスに回収されず残っているプロセスの数。増え続けるなら親のアプリに問題がある"
+    x_label: "時刻"
+    y_label: "個"
+
+  spikes_table:
+    type: table
+    query: memory_spikes
+    title: "メモリの山"
+    subtitle: "PC 全体の使用量が直前 30 分の平均より 1GB 以上跳ねた時刻と、そのときいちばん増えたプロセス。30 分ごとに最大の 1 件"
+    style:
+      columns:
+        spike_at:
+          label: "時刻"
+        jump_gb:
+          label: "増えた量 GB"
+          format: number
+        process_name:
+          label: "いちばん増えたプロセス"
+        process_jump_mb:
+          label: "そのプロセスの増加 MB"
+          format: integer
+
+  tab_cost_kpi:
+    type: kpi
+    query: tab_cost
+    value: mb_per_tab
+    label: "Chrome のタブ 1 枚あたりのメモリ MB"
+    style:
+      value:
+        format: integer
+
+  tab_debt_scatter:
+    type: scatter
+    query: tab_debt
+    x: renderers
+    y: memory_gb
+    title: "Chrome のタブ負債"
+    subtitle: "1 点が 1 分。横が Renderer（ほぼタブ 1 枚に 1 つ）の数、縦がその合計メモリ"
+    x_label: "Renderer の数"
+    y_label: "GB"
+
+  cpu_memory_scatter:
+    type: scatter
+    query: cpu_vs_memory
+    x: avg_cpu_percent
+    y: avg_memory_mb
+    color: category
+    title: "CPU とメモリ"
+    subtitle: "1 点が 1 アプリ（平均 100MB 以上）。縦軸は対数。左上は「何もしていないのにメモリを抱えている」アプリ"
+    x_label: "平均 CPU %"
+    y_label: "平均メモリ MB（対数）"
+    style:
+      axis_y:
+        scale:
+          continuous:
+            type: log
+
+  app_trends_table:
+    type: table
+    query: app_trends
+    title: "アプリ別のメモリと推移"
+    subtitle: "直近 6 時間のメモリ上位 10。推移は 15 分ごとの平均"
+    style:
+      columns:
+        process_name:
+          label: "アプリ"
+        category:
+          label: "カテゴリ"
+        avg_memory_mb:
+          label: "平均 MB"
+          format: integer
+        trend:
+          label: "推移"
+          spark:
+            type: line
+            last_visible: true
+
+  uptime_line:
+    type: scatter
+    query: uptime_vs_memory
+    x: uptime_hours
+    y: used_gb
+    title: "再起動からの経過時間とメモリ"
+    subtitle: "1 点が起動からの 1 時間ぶんの平均。右肩上がりなら、再起動で空く分がある"
+    x_label: "起動からの時間"
+    y_label: "GB"
+    style:
+      axis_x:
+        scale:
+          continuous:
+            zero: false
+
+  app_runs_table:
+    type: table
+    query: app_runs
+    title: "アプリの起動回数と寿命"
+    subtitle: "収集中に起動したプロセスのみ。Chrome の Renderer の起動回数は、ほぼ開いたタブの数"
+    style:
+      columns:
+        process_name:
+          label: "アプリ"
+        category:
+          label: "カテゴリ"
+        starts:
+          label: "起動回数"
+          format: integer
+        median_lifetime_minutes:
+          label: "寿命の中央値 分"
+          format: ",.1f"
+        max_lifetime_minutes:
+          label: "最長 分"
+          format: integer
+
+tabs:
+  id: view
+  items:
+    - title: "いまの PC"
+      rows:
+        - text: "5 秒おきに集めたプロセスごとのメモリを、1 分単位にまとめたもの。時刻は日本時間。"
+        - cols: [used_now, used_gb_now, browser_now_kpi, zombie_now_kpi]
+        - cols: [memory_by_category, used_ratio]
+        - cols: [spikes_table, zombie_line]
+    - title: "プロセスを観察"
+      rows:
+        - cols: [tab_cost_kpi]
+        - cols: [tab_debt_scatter, cpu_memory_scatter]
+        - cols: [app_trends_table, top10]
+        - cols: [uncategorized_table]
+    - title: "使い方"
+      rows:
+        - cols: [app_runs_table, uptime_line]

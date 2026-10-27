@@ -1,0 +1,21 @@
+exposures:
+  - name: pc_memory_dashboard
+    label: 自分の PC のメモリ
+    type: dashboard
+    maturity: medium
+    # dbt build のたびに同じ URL のまま更新される MotherDuck の Dive
+    url: https://app.motherduck.com/dives/<uuid>   # dbt build のログに出た Dive の URL に置き換える
+    description: >
+      charts/pc_metrics.yml で定義し、dbt build のたびに MotherDuck の Dive として公開しているダッシュボード。
+      「いまの PC」「プロセスを観察」「使い方」の 3 タブ。ボードの SQL が ref しているモデルをすべて depends_on に書く
+    depends_on:
+      - ref('fct_process_memory')
+      - ref('fct_host_memory')
+      - ref('fct_process_runs')
+      - ref('dim_processes')
+    owner:
+      name: mukai
+      email: you@example.com
+    # v2 では tags も config の下に書く（直下だと dbt1060 で無視される）
+    config:
+      tags: [dbt_charts, dive]

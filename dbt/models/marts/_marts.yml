@@ -1,0 +1,152 @@
+models:
+- name: dim_processes
+  description: 'プロセス名で 1 行。一度でも収集されたプロセス名に、seeds/process_category.csv からカテゴリを付けたもの。 is_categorized が false の名前は、マスタに追加する候補。
+
+    '
+  columns:
+  - name: process_key
+    description: process_name から作った代理キー。fct_process_memory との結合に使う
+    data_tests:
+    - unique
+    - not_null
+  - name: category
+    description: browser / ide / chat / meeting / dev / ai / system / media / other。マスタにない名前は other
+    data_tests:
+    - accepted_values:
+        arguments:
+          values:
+          - browser
+          - ide
+          - chat
+          - meeting
+          - dev
+          - ai
+          - system
+          - media
+          - other
+  - name: is_categorized
+    description: マスタに載っているか。false の名前がマスタを育てる候補
+  - name: process_name
+    description: 小文字化し Windows の .exe を落とした名前。Mac の「Google Chrome Helper (Renderer)」と Windows の「chrome.exe」は別の名前として残る
+  - name: first_collected_at
+    description: このプロセス名を初めて収集した時刻（UTC）
+- name: dim_hosts
+  description: 'PC で 1 行。Mac はネットワークによってホスト名が変わるので、seeds/host_aliases.csv でホスト名を PC 名に寄せている。 対応表にないホスト名はそのまま PC 名になる
+
+    '
+  columns:
+  - name: host_key
+    description: device_name の代理キー
+    data_tests:
+    - unique
+    - not_null
+  - name: device_name
+    data_tests:
+    - unique
+    - not_null
+    description: 寄せた先の PC 名。対応表で自分で決めた名前
+  - name: hostnames
+    description: この PC がこれまでに名乗ったホスト名。新しい名前が増えていたら対応表に足す
+  - name: mem_total_gb
+    description: 最新の収集時点の物理メモリ（GB）
+  - name: last_boot_time
+    description: 最新の収集時点の起動時刻。これが変わったら再起動した
+- name: fct_process_memory
+  description: '分 × PC × プロセス名で 1 行。1 回の収集の中で同名プロセスを合算してから、1 分の中で平均したもの。 カテゴリ別に合計すると PC 全体の使用量を超えることがある。RSS は共有ライブラリを各プロセスで重複して数えるため。
+
+    '
+  columns:
+  - name: process_memory_key
+    description: 分・PC 名・プロセス名の代理キー
+    data_tests:
+    - unique
+    - not_null
+  - name: host_key
+    data_tests:
+    - relationships:
+        arguments:
+          to: ref('dim_hosts')
+          field: host_key
+  - name: process_key
+    data_tests:
+    - relationships:
+        arguments:
+          to: ref('dim_processes')
+          field: process_key
+  - name: avg_process_count
+    description: 同名プロセスが同時に何個いたかの 1 分平均。Chrome ならタブ数の目安になる
+  - name: avg_zombie_count
+    description: 終了したのに親プロセスに回収されずに残っている（status が zombie の）プロセス数の 1 分平均
+  - name: minute
+    description: 収集時刻を日本時間に直し、分で切り捨てたもの
+  - name: avg_memory_mb
+    description: 同名プロセスの合計メモリ（RSS）の 1 分平均（MB）
+  - name: max_collected_at
+    description: この分に含まれる最後の収集時刻（UTC）。鮮度の判定に使う
+- name: fct_host_memory
+  description: 分 × PC で 1 行。PC 全体のメモリと CPU の 1 分平均
+  columns:
+  - name: host_memory_key
+    description: 分・PC 名の代理キー
+    data_tests:
+    - unique
+    - not_null
+  - name: host_key
+    data_tests:
+    - relationships:
+        arguments:
+          to: ref('dim_hosts')
+          field: host_key
+  - name: boot_time
+    description: PC の起動時刻（UTC）
+  - name: uptime_hours
+    description: 起動からの経過時間（時間）の 1 分平均
+  - name: avg_used_gb
+    description: OS が報告する使用中メモリの 1 分平均（GB）。fct_process_memory の合計とは一致しない
+  - name: avg_used_percent
+    description: OS が報告する使用率の 1 分平均（%）
+  - name: max_collected_at
+    description: この分に含まれる最後の収集時刻（UTC）。鮮度の判定に使う
+  config:
+    loaded_at_field: max_collected_at
+    freshness:
+      warn_after:
+        count: 1
+        period: hour
+      error_after:
+        count: 1
+        period: day
+- name: fct_process_runs
+  description: 'プロセスの 1 回の起動で 1 行。PC・pid・起動時刻の組で見分ける（pid は使い回されるため）。 アプリを何回起動したか、1 回あたりどれだけ動いていたかを見るためのファクト
+
+    '
+  columns:
+  - name: process_run_key
+    description: PC・pid・起動時刻の代理キー
+    data_tests:
+    - unique
+    - not_null
+  - name: host_key
+    data_tests:
+    - relationships:
+        arguments:
+          to: ref('dim_hosts')
+          field: host_key
+  - name: process_key
+    data_tests:
+    - relationships:
+        arguments:
+          to: ref('dim_processes')
+          field: process_key
+  - name: is_started_while_collecting
+    description: 収集中に起動したか。収集を始める前から動いていたプロセスは false で、起動回数には数えない
+  - name: observed_lifetime_minutes
+    description: 起動から最後に見えた時刻までの分数。まだ動いているプロセスや、収集が止まっていた間に終わったプロセスは実際より短く出る
+  - name: started_at
+    description: プロセスの起動時刻（UTC）。psutil の create_time
+  - name: started_at_jst
+    description: 起動時刻を日本時間にしたもの
+  - name: first_seen_at
+    description: このプロセスを初めて収集した時刻（UTC）
+  - name: last_seen_at
+    description: このプロセスを最後に収集した時刻（UTC）

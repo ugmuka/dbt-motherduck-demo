@@ -1,0 +1,47 @@
+process_name,category
+google chrome,browser
+google chrome helper,browser
+google chrome helper (renderer),browser
+google chrome helper (gpu),browser
+chrome,browser
+msedge,browser
+msedgewebview2,browser
+safari,browser
+com.apple.webkit.webcontent,browser
+firefox,browser
+code,ide
+code helper,ide
+code helper (renderer),ide
+code helper (plugin),ide
+code helper (gpu),ide
+cursor,ide
+slack,chat
+slack helper,chat
+slack helper (renderer),chat
+slack helper (gpu),chat
+claude,ai
+claude helper (renderer),ai
+chatgpt,ai
+discord,chat
+zoom.us,meeting
+zoom,meeting
+teams,meeting
+ms-teams,meeting
+microsoft teams,meeting
+microsoft teams webview helper,meeting
+microsoft teams webview helper (renderer),meeting
+microsoft teams webview helper (gpu),meeting
+python,dev
+python3,dev
+node,dev
+docker,dev
+com.docker.backend,dev
+com.docker.build,dev
+windowserver,system
+kernel_task,system
+system,system
+explorer,system
+finder,system
+dwm,system
+spotify,media
+music,media

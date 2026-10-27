@@ -1,0 +1,14 @@
+# 秘密情報
+.env
+.envrc
+# 環境・生成物
+.venv/
+__pycache__/
+data/
+*.log
+*.duckdb
+*.duckdb.wal
+data_dev/
+logs/
+.claude/
+dbt/.user.yml

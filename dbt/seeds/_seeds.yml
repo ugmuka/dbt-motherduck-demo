@@ -1,0 +1,16 @@
+seeds:
+  - name: host_aliases
+    description: >
+      ホスト名から PC 名を引く対応表。Mac はネットワークによって socket.gethostname() の値が変わり、
+      同じ PC が別のホスト名で記録されるので、ここで 1 つの PC 名に寄せる。載っていないホスト名はそのまま PC 名になる
+    config:
+      column_types:
+        hostname: varchar
+        device_name: varchar
+    columns:
+      - name: hostname
+        description: collect.py が記録したホスト名
+        data_tests: [unique, not_null]
+      - name: device_name
+        description: 寄せた先の PC 名。自分で決めた名前でよい
+        data_tests: [not_null]

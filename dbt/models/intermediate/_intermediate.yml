@@ -1,0 +1,8 @@
+models:
+  - name: int_hosts_resolved
+    description: >
+      ホスト名で 1 行。収集されたホスト名ごとに、寄せた先の PC 名（device_name）を持つ。
+      dim_hosts と 2 つのファクトがここを参照して、同じ PC を同じキーにそろえる
+    columns:
+      - name: hostname
+        data_tests: [unique, not_null]

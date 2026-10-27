@@ -1,0 +1,14 @@
+dbt_packages/
+dbt_internal_packages/
+logs/
+target/
+.env
+renders/
+.venv/
+__pycache__/
+*.duckdb
+# 生成物
+site/
+*.png
+.claude/
+.vscode/mcp.json

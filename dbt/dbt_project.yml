@@ -1,0 +1,37 @@
+name: pc_metrics
+version: "1.0.0"
+profile: pc_metrics
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  pc_metrics:
+    # description を MotherDuck 側のテーブルとカラムのコメントにも書き込む
+    +persist_docs:
+      relation: true
+      columns: true
+    +materialized: view
+    marts:
+      +materialized: table
+
+vars:
+  # Dive の公開は prod（MotherDuck）のときだけ。vars は文字列になるので "False" も真扱い。偽は空文字で表す
+  save_charts_as_dives: "{{ 'true' if target.name == 'prod' else '' }}"
+  dbt_charts_dive:
+    share:
+      access: organization   # 既定。unrestricted にするとリンクを知っている人は誰でも見られる
+    commands: [build, run]
+
+info_schema:
+  version: 1
+
+flags:
+  # dbt deps でプロジェクトとパッケージのエージェント向けスキルを .claude/skills に入れる
+  ai_provider: claude

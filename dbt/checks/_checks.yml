@@ -1,0 +1,8 @@
+version: 2
+checks:
+  - name: marts_have_descriptions
+    description: marts のモデルに description がない
+  - name: marts_have_tests
+    description: marts のモデルにテストが 1 本もない
+  - name: models_follow_layer_naming
+    description: モデルの名前が層の決まり（stg_ / int_ / fct_ / dim_）に従っていない

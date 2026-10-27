@@ -1,0 +1,7 @@
+# dbt Charts の設定。接続は dbt の profiles.yml の charts ターゲットを使う
+# （MotherDuck の Dive として公開するときは、Flight の中でこのターゲットが MotherDuck 接続に差し替えられる）
+sources:
+  analytics:
+    type: dbt_profile
+    profile: pc_metrics
+    target: charts

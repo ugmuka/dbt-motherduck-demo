@@ -1,0 +1,9 @@
+packages:
+- git: https://github.com/motherduckdb/labs.git
+  name: dbt_charts_dive
+  revision: db4988f342376061716b822a89788e54ddfccb6f
+  subdirectory: projects/dbt-charts-dives
+- package: dbt-labs/dbt_utils
+  name: dbt_utils
+  version: 1.4.1
+sha1_hash: 9dc62561e009b24f616bef543383f63bfdfd54d2
