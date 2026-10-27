@@ -74,7 +74,7 @@ models:
           to: ref('dim_processes')
           field: process_key
   - name: avg_process_count
-    description: 同名プロセスが同時に何個いたかの 1 分平均。Chrome ならタブ数の目安になる
+    description: 同名プロセスが同時に何個いたかの 1 分平均
   - name: avg_zombie_count
     description: 終了したのに親プロセスに回収されずに残っている（status が zombie の）プロセス数の 1 分平均
   - name: minute

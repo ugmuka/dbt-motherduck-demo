@@ -55,7 +55,7 @@ final as (
         snapshots,
         -- 収集を始める前から動いていたプロセスは「起動回数」に数えない
         create_time >= min(first_seen_at) over (partition by device_name) as is_started_while_collecting,
-        -- 最後に見えた時刻までの寿命。まだ動いているプロセスは下限になる
+        -- 起動から最後に見えた時刻までの観測時間。まだ動いているプロセスは下限になる
         round(date_diff('second', create_time, last_seen_at) / 60, 1) as observed_lifetime_minutes
 
     from runs

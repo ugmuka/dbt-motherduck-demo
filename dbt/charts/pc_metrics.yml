@@ -125,7 +125,7 @@ queries:
 
   tab_debt:
     sql: |
-      -- 1 分ごとの Chrome の Renderer（ほぼタブ 1 枚に 1 つ）の数と、合計メモリ
+      -- 1 分ごとの Chrome の Renderer の数と、合計メモリ
       select f.minute, f.avg_process_count as renderers, round(f.avg_memory_mb / 1024, 2) as memory_gb
       from {{ ref('fct_process_memory') }} as f
       inner join {{ ref('dim_processes') }} as p on f.process_key = p.process_key
@@ -187,7 +187,7 @@ queries:
 
   app_runs:
     sql: |
-      -- 収集中に起動したプロセスについて、アプリごとの起動回数と寿命
+      -- 収集中に起動したプロセスについて、アプリごとの起動件数と観測時間
       -- （system と other は短命な裏方のプロセスが多いので除く）
       select
         p.process_name, p.category,
@@ -323,7 +323,7 @@ charts:
     type: kpi
     query: tab_cost
     value: mb_per_tab
-    label: "Chrome のタブ 1 枚あたりのメモリ MB"
+    label: "Chrome の Renderer 1 個あたりのメモリ MB"
     style:
       value:
         format: integer
@@ -333,8 +333,8 @@ charts:
     query: tab_debt
     x: renderers
     y: memory_gb
-    title: "Chrome のタブ負債"
-    subtitle: "1 点が 1 分。横が Renderer（ほぼタブ 1 枚に 1 つ）の数、縦がその合計メモリ"
+    title: "Chrome の Renderer の数とメモリ"
+    subtitle: "1 点が 1 分。横が Renderer の数、縦がその合計メモリ。Renderer とタブは 1 対 1 ではない"
     x_label: "Renderer の数"
     y_label: "GB"
 
@@ -392,8 +392,8 @@ charts:
   app_runs_table:
     type: table
     query: app_runs
-    title: "アプリの起動回数と寿命"
-    subtitle: "収集中に起動したプロセスのみ。Chrome の Renderer の起動回数は、ほぼ開いたタブの数"
+    title: "アプリの起動件数と観測時間"
+    subtitle: "収集中に起動を観測したプロセスのみ。観測時間は起動から最後に観測した時刻までで、観測を終えた時点で動いていたものは短く出る"
     style:
       columns:
         process_name:
@@ -401,13 +401,13 @@ charts:
         category:
           label: "カテゴリ"
         starts:
-          label: "起動回数"
+          label: "起動件数"
           format: integer
         median_lifetime_minutes:
-          label: "寿命の中央値 分"
+          label: "観測時間の中央値 分"
           format: ",.1f"
         max_lifetime_minutes:
-          label: "最長 分"
+          label: "観測時間の最長 分"
           format: integer
 
 tabs:
