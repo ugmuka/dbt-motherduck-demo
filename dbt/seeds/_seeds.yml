@@ -1,4 +1,21 @@
 seeds:
+  - name: process_category
+    description: プロセス名からカテゴリを引くマスタ。手で育てる前提の小さな表
+    config:
+      column_types:
+        process_name: varchar
+        category: varchar
+    columns:
+      - name: process_name
+        description: stg_process_metrics.process_name と一致させる（小文字、.exe なし）
+        data_tests:
+          - unique
+          - not_null
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [browser, ide, chat, meeting, dev, ai, system, media]
   - name: host_aliases
     description: >
       ホスト名から PC 名を引く対応表。Mac はネットワークによって socket.gethostname() の値が変わり、

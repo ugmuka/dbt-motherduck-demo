@@ -1,3 +1,6 @@
 [sqlfluff]
 templater = dbt
 dialect = duckdb
+# ST06: 列は dbt のスタイルガイドに合わせて意味の順（ids、strings、numerics、timestamps）に並べるので外す
+# RF04: minute と date はボードの SQL でも使う列名で、DuckDB では問題なく使えるので外す
+exclude_rules = ST06, RF04
