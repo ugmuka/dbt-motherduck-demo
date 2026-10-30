@@ -12,16 +12,16 @@ models:
       - name: collected_at_jst
         description: collected_at を日本時間に直したもの（表示用）
       - name: process_name
-        description: 小文字化し .exe を落としたプロセス名。カテゴリの JOIN キーなので欠けると集計から漏れる
-        data_tests:
-          - not_null
+        description: >
+          小文字化し .exe を落としたプロセス名。Windows の Secure System のように名前が読めないプロセスは null。
+          欠損は想定内なので not_null は付けない（null の行はカテゴリの JOIN で other になる）
       - name: status
         description: psutil のプロセス状態
         data_tests:
           - accepted_values:
               arguments:
-                # 2026-10-14 に dbt show で確かめた Mac の実値。Windows の値は要確認
-                values: [running, sleeping, zombie, idle]
+                # dbt show で確かめた実値（Mac は 2026-10-14、Windows 11 は 2026-10-29）。stopped は Windows の一時停止中のアプリ
+                values: [running, sleeping, zombie, idle, stopped]
       - name: memory_mb
         description: >
           常駐メモリ（RSS）の MB。権限がなく読めないシステムプロセスは null（Mac で約 3 割）。

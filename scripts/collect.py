@@ -62,7 +62,7 @@ class Rotator:
     def open(self):
         stamp = dt.datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         self.paths = [self.out / f"process_metrics_{stamp}.csv", self.out / f"system_metrics_{stamp}.csv"]
-        self.files = [open(p.with_suffix(".csv.part"), "w", newline="") for p in self.paths]
+        self.files = [open(p.with_suffix(".csv.part"), "w", newline="", encoding="utf-8") for p in self.paths]
         self.writers = [csv.writer(f) for f in self.files]
         self.writers[0].writerow(PROCESS_COLUMNS)
         self.writers[1].writerow(SYSTEM_COLUMNS)
